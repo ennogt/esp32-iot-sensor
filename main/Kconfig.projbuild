@@ -118,6 +118,18 @@ menu "IoT Sensor Configuration"
 
     menu "Sensor & MQTT Settings"
 
+        config SENSOR_NAME_TEMP
+            string "Temperature sensor name"
+            default "Room Temperature"
+            help
+                Friendly name shown in Home Assistant for the temperature sensor.
+
+        config SENSOR_NAME_HUM
+            string "Humidity sensor name"
+            default "Room Humidity"
+            help
+                Friendly name shown in Home Assistant for the humidity sensor.
+
         config SEND_INTERVAL_HEARTBEAT_US
             int "Heartbeat interval (microseconds)"
             default 60000000
