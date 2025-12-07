@@ -37,6 +37,10 @@
 static lv_obj_t *label_status = NULL;
 static lv_obj_t *label_temp = NULL;
 
+// Display state tracking
+static esp_lcd_panel_handle_t g_panel_handle = NULL;
+static bool g_display_enabled = true;
+
 // Mutex for thread safety
 static _lock_t lvgl_api_lock;
 
@@ -173,6 +177,9 @@ void gui_init(void)
     panel_config.vendor_config = &ssd1306_config;
     ESP_ERROR_CHECK(esp_lcd_new_panel_ssd1306(io_handle, &panel_config, &panel_handle));
 
+    // Store panel handle for later use
+    g_panel_handle = panel_handle;
+
     ESP_ERROR_CHECK(esp_lcd_panel_reset(panel_handle));
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle));
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
@@ -242,4 +249,29 @@ void gui_set_status(const char *status_text)
         lv_obj_align(label_status, LV_ALIGN_TOP_MID, 0, 0);
     }
     _lock_release(&lvgl_api_lock);
+}
+
+void gui_turn_off(void)
+{
+    if (g_panel_handle && g_display_enabled)
+    {
+        ESP_LOGI(TAG, "Turning off display");
+        esp_lcd_panel_disp_on_off(g_panel_handle, false);
+        g_display_enabled = false;
+    }
+}
+
+void gui_turn_on(void)
+{
+    if (g_panel_handle && !g_display_enabled)
+    {
+        ESP_LOGI(TAG, "Turning on display");
+        esp_lcd_panel_disp_on_off(g_panel_handle, true);
+        g_display_enabled = true;
+    }
+}
+
+bool gui_is_enabled(void)
+{
+    return g_display_enabled;
 }

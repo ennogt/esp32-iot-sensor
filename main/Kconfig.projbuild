@@ -154,5 +154,19 @@ menu "IoT Sensor Configuration"
 
     endmenu
 
+    menu "Display Settings"
+
+        config DISPLAY_TIMEOUT_SECONDS
+            int "Display timeout (seconds)"
+            default 60
+            range 0 3600
+            help
+                Display will turn off after this many seconds of inactivity.
+                Press the button to wake up the display.
+                Set to 0 to disable timeout and keep display on constantly.
+                Range: 0 (disabled) or 10-3600 seconds (10 seconds to 1 hour).
+
+    endmenu
+
 endmenu
 
