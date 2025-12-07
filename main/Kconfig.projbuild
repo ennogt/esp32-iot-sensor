@@ -1,0 +1,146 @@
+menu "IoT Sensor Configuration"
+
+    config DEVICE_NAME_CUSTOM
+        bool "Use custom device name"
+        default n
+        help
+            If enabled, use a custom friendly name for the device in Home Assistant.
+            Otherwise, an auto-generated name based on MAC address will be used.
+
+    config DEVICE_NAME
+        string "Custom device friendly name"
+        depends on DEVICE_NAME_CUSTOM
+        default "Room Sensor"
+        help
+            Friendly name shown in Home Assistant (e.g., "Living Room Sensor").
+            Only used if custom device name is enabled.
+
+    config MQTT_BROKER_URI
+        string "MQTT Broker URI"
+        default "mqtt://192.168.178.245"
+        help
+            Connection string for the MQTT broker.
+            Format: mqtt://host or mqtts://host for TLS.
+
+    config MQTT_USER
+        string "MQTT Username"
+        default "mqtt-user"
+        help
+            Username for MQTT broker authentication.
+
+    config MQTT_PASS
+        string "MQTT Password"
+        default "esp32-secret-pw"
+        help
+            Password for MQTT broker authentication.
+
+    config WIFI_PROV_SERVICE_NAME
+        string "Wi-Fi provisioning service name"
+        default "PROV_ESP32_SENSOR"
+        help
+            Name of the SoftAP hotspot for Wi-Fi provisioning.
+
+    menu "Hardware Pin Configuration"
+
+        config BUTTON_GPIO
+            int "Reset button GPIO pin"
+            default 4
+            help
+                GPIO pin number for the reset button.
+
+        config BUTTON_ACTIVE_LEVEL
+            int "Button active level (0=LOW, 1=HIGH)"
+            default 0
+            range 0 1
+            help
+                Logic level when button is pressed.
+
+        config SENSOR_GPIO
+            int "DHT sensor GPIO pin"
+            default 10
+            help
+                GPIO pin number for DHT22/AM2301 sensor data line.
+
+        menu "Display (I2C SSD1306)"
+
+            config I2C_BUS_PORT
+                int "I2C bus port"
+                default 0
+                help
+                    I2C bus number (usually 0 for ESP32).
+
+            config PIN_NUM_SDA
+                int "I2C SDA pin"
+                default 20
+                help
+                    GPIO pin for I2C data line.
+
+            config PIN_NUM_SCL
+                int "I2C SCL pin"
+                default 19
+                help
+                    GPIO pin for I2C clock line.
+
+            config PIN_NUM_RST
+                int "Display reset pin (-1 if not used)"
+                default -1
+                help
+                    GPIO pin for display reset, or -1 to disable.
+
+            config I2C_HW_ADDR
+                hex "I2C device address"
+                default 0x3C
+                range 0x00 0xFF
+                help
+                    I2C address of SSD1306 display (usually 0x3C or 0x3D).
+
+            config LCD_H_RES
+                int "Display horizontal resolution"
+                default 128
+                help
+                    Width of the OLED display in pixels.
+
+            config LCD_V_RES
+                int "Display vertical resolution"
+                default 32
+                help
+                    Height of the OLED display in pixels.
+
+            config LCD_PIXEL_CLOCK_HZ
+                int "I2C clock frequency"
+                default 400000
+                help
+                    I2C clock frequency in Hz (typically 400000 for standard mode).
+
+        endmenu
+
+    endmenu
+
+    menu "Sensor & MQTT Settings"
+
+        config SEND_INTERVAL_HEARTBEAT_US
+            int "Heartbeat interval (microseconds)"
+            default 60000000
+            help
+                Send data at least this often (60 seconds = 60000000 microseconds).
+
+        config THRESHOLD_TEMP
+            int "Temperature change threshold (x0.1°C)"
+            default 1
+            range 0 100
+            help
+                Publish to MQTT if temperature changes by at least this amount.
+                Stored as integer: 1 = 0.1°C, 2 = 0.2°C, etc.
+
+        config THRESHOLD_HUM
+            int "Humidity change threshold (x0.1%)"
+            default 5
+            range 0 1000
+            help
+                Publish to MQTT if humidity changes by at least this amount.
+                Stored as integer: 5 = 0.5%, 10 = 1.0%, etc.
+
+    endmenu
+
+endmenu
+

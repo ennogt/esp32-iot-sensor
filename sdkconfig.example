@@ -1,0 +1,44 @@
+# ESP32 IoT Sensor Configuration Example
+#
+# This is an example configuration file.
+# Copy this to `sdkconfig` and modify for your environment:
+#   cp sdkconfig.example sdkconfig
+#   idf.py menuconfig
+#
+# DO NOT commit sdkconfig to Git - each device has unique settings!
+
+#
+# IoT Sensor Configuration
+#
+CONFIG_DEVICE_NAME_CUSTOM=n
+CONFIG_DEVICE_NAME="Room Sensor"
+CONFIG_MQTT_BROKER_URI="mqtt://192.168.178.245"
+CONFIG_MQTT_USER="mqtt-user"
+CONFIG_MQTT_PASS="esp32-secret-pw"
+CONFIG_WIFI_PROV_SERVICE_NAME="PROV_ESP32_SENSOR"
+
+#
+# Hardware Pin Configuration
+#
+CONFIG_BUTTON_GPIO=4
+CONFIG_BUTTON_ACTIVE_LEVEL=0
+CONFIG_SENSOR_GPIO=10
+
+#
+# Display (I2C SSD1306)
+#
+CONFIG_I2C_BUS_PORT=0
+CONFIG_PIN_NUM_SDA=20
+CONFIG_PIN_NUM_SCL=19
+CONFIG_PIN_NUM_RST=-1
+CONFIG_I2C_HW_ADDR=0x3c
+CONFIG_LCD_H_RES=128
+CONFIG_LCD_V_RES=32
+CONFIG_LCD_PIXEL_CLOCK_HZ=400000
+
+#
+# Sensor & MQTT Settings
+#
+CONFIG_SEND_INTERVAL_HEARTBEAT_US=60000000
+CONFIG_THRESHOLD_TEMP=1
+CONFIG_THRESHOLD_HUM=5

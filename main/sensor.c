@@ -1,10 +1,12 @@
 #include "sensor.h"
+
+#include "config.h"
 #include "dht.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
 
 #define SENSOR_TYPE DHT_TYPE_AM2301 // AM2301 is compatible with DHT22
-#define SENSOR_GPIO 10
+#define SENSOR_GPIO CONFIG_SENSOR_GPIO
 
 static const char *TAG = "SENSOR";
 

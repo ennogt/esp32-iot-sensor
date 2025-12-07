@@ -1,4 +1,10 @@
 #include "gui.h"
+
+#include <stdio.h>
+#include <sys/lock.h>
+#include <unistd.h>
+
+#include "config.h"
 #include "driver/i2c_master.h"
 #include "esp_err.h"
 #include "esp_lcd_panel_io.h"
@@ -9,21 +15,18 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "lvgl.h"
-#include <stdio.h>
-#include <sys/lock.h>
-#include <unistd.h>
 
 // ================= CONFIGURATION =================
-#define I2C_BUS_PORT 0
-#define PIN_NUM_SDA 20
-#define PIN_NUM_SCL 19
-#define PIN_NUM_RST -1
-#define I2C_HW_ADDR 0x3C
+#define I2C_BUS_PORT CONFIG_I2C_BUS_PORT
+#define PIN_NUM_SDA CONFIG_PIN_NUM_SDA
+#define PIN_NUM_SCL CONFIG_PIN_NUM_SCL
+#define PIN_NUM_RST CONFIG_PIN_NUM_RST
+#define I2C_HW_ADDR CONFIG_I2C_HW_ADDR
 
 // LCD Settings
-#define LCD_H_RES 128
-#define LCD_V_RES 32
-#define LCD_PIXEL_CLOCK_HZ (400 * 1000)
+#define LCD_H_RES CONFIG_LCD_H_RES
+#define LCD_V_RES CONFIG_LCD_V_RES
+#define LCD_PIXEL_CLOCK_HZ CONFIG_LCD_PIXEL_CLOCK_HZ
 
 // LVGL Settings
 #define LVGL_TICK_PERIOD_MS 5
