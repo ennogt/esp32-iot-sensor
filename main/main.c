@@ -8,6 +8,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "wifi_provisioning/manager.h"
+
 // Modules
 #include "gui.h"
 #include "mqtt_helper.h"
@@ -18,21 +20,73 @@ static const char *TAG = "MAIN";
 
 // Settings
 #define SEND_INTERVAL_HEARTBEAT_US CONFIG_SEND_INTERVAL_HEARTBEAT_US
-// Thresholds are stored as integers (1 = 0.1, 5 = 0.5, etc.)
 #define THRESHOLD_TEMP (CONFIG_THRESHOLD_TEMP * 0.1f)
 #define THRESHOLD_HUM (CONFIG_THRESHOLD_HUM * 0.1f)
 #define BUTTON_GPIO CONFIG_BUTTON_GPIO
 #define BUTTON_ACTIVE_LEVEL CONFIG_BUTTON_ACTIVE_LEVEL
-#define DISPLAY_TIMEOUT_US (CONFIG_DISPLAY_TIMEOUT_SECONDS * 1000000LL)
+#define LONG_PRESS_DURATION_MS 3000
 
-int64_t last_send_time = 0;           // Global so it can be reset if needed
-int64_t last_activity_time = 0;       // Track display activity for timeout
-volatile bool button_pressed = false; // Flag set by ISR, processed in main loop
+int64_t last_send_time = 0;
+volatile bool button_pressed = false;
+volatile bool provisioning_reset_triggered = false;
 
-// Button interrupt handler - keep it minimal, no complex operations in ISR
+// Button interrupt handler
 static void IRAM_ATTR button_isr_handler(void *arg)
 {
     button_pressed = true;
+}
+
+// Dedicated task for button handling
+static void button_task(void *arg)
+{
+    while (1)
+    {
+        if (button_pressed)
+        {
+            button_pressed = false;
+
+            if (gpio_get_level(BUTTON_GPIO) == BUTTON_ACTIVE_LEVEL)
+            {
+                int64_t press_start = esp_timer_get_time();
+                bool is_long_press = false;
+
+                while (gpio_get_level(BUTTON_GPIO) == BUTTON_ACTIVE_LEVEL)
+                {
+                    vTaskDelay(pdMS_TO_TICKS(100));
+                    int64_t press_duration = (esp_timer_get_time() - press_start) / 1000;
+
+                    if (press_duration >= LONG_PRESS_DURATION_MS)
+                    {
+                        // Long press detected
+                        ESP_LOGI(TAG, "Long press detected - resetting WiFi provisioning");
+
+                        // Set status and block main loop
+                        gui_set_status("Resetting WiFi...");
+                        provisioning_reset_triggered = true;
+
+                        vTaskDelay(pdMS_TO_TICKS(500));
+
+                        // This will erase WiFi credentials and restart the device
+                        wifi_helper_reset_provisioning();
+
+                        is_long_press = true;
+                        break;
+                    }
+                }
+
+                // Short press - toggle display
+                if (!is_long_press)
+                {
+                    ESP_LOGI(TAG, "Short press - toggling display");
+                    if (gui_is_enabled())
+                        gui_turn_off();
+                    else
+                        gui_turn_on();
+                }
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
 }
 
 void app_main(void)
@@ -46,125 +100,71 @@ void app_main(void)
     io_conf.pull_up_en = 1;
     gpio_config(&io_conf);
 
-    // Install GPIO ISR service and add handler for button
     gpio_install_isr_service(0);
     gpio_isr_handler_add(BUTTON_GPIO, button_isr_handler, NULL);
 
     gui_init();
     gui_set_status("Booting...");
 
-    // --- 2. Button check (reset WiFi credentials) ---
-    // Temporarily disable interrupt for boot check
-    gpio_isr_handler_remove(BUTTON_GPIO);
-    if (gpio_get_level(BUTTON_GPIO) == BUTTON_ACTIVE_LEVEL)
-    {
-        ESP_LOGI(TAG, "Button pressed during boot! Erasing WiFi credentials...");
-        gui_set_status("Erasing WiFi...");
-        vTaskDelay(pdMS_TO_TICKS(2000));  // Show message and debounce
-        wifi_helper_reset_provisioning(); // This will restart the device
-    }
-
-    // Initialize activity timer on boot
-    last_activity_time = esp_timer_get_time();
-
-    ESP_LOGI(TAG, "Configured display timeout: %d seconds", CONFIG_DISPLAY_TIMEOUT_SECONDS);
-
-    // Re-enable button interrupt after boot check
-    gpio_isr_handler_add(BUTTON_GPIO, button_isr_handler, NULL);
-
     // --- 3. Init modules ---
     wifi_helper_init();
     sensor_init();
-    // mqtt_helper_start() is called later once Wi-Fi is up
+
+    xTaskCreate(button_task, "button_task", 4096, NULL, 5, NULL);
+    ESP_LOGI(TAG, "Button task started");
 
     float current_temp = 0.0;
     float current_hum = 0.0;
     float last_sent_temp = -127.0;
     float last_sent_hum = -1.0;
 
-    // Status flags
     bool mqtt_started = false;
 
     while (1)
     {
-        // ---------------------------------------------------------
-        // Button check for display wake-up (process ISR flag)
-        // ---------------------------------------------------------
-        if (button_pressed)
+        // Read and display sensor values
+        if (sensor_read_values(&current_temp, &current_hum))
         {
-            button_pressed = false; // Clear flag
-            ESP_LOGI(TAG, "Button pressed - waking up display");
-            if (!gui_is_enabled())
-            {
-                gui_turn_on();
-            }
-            last_activity_time = esp_timer_get_time();
+            gui_set_values(current_temp, current_hum);
         }
-
-        // ---------------------------------------------------------
-        // Display timeout check (only if timeout is enabled)
-        // ---------------------------------------------------------
-        if (DISPLAY_TIMEOUT_US > 0 && gui_is_enabled())
+        else
         {
-            int64_t now = esp_timer_get_time();
-            if ((now - last_activity_time) > DISPLAY_TIMEOUT_US)
+            if (!provisioning_reset_triggered && wifi_helper_is_connected())
             {
-                ESP_LOGI(TAG, "Display timeout - turning off");
-                gui_turn_off();
+                gui_set_status("Sensor Error");
             }
         }
 
-        // ---------------------------------------------------------
-        // A. Wi-Fi check
-        // ---------------------------------------------------------
-        if (wifi_helper_is_connected())
+        if (!provisioning_reset_triggered)
         {
-            // Start MQTT once Wi-Fi is up
-            if (!mqtt_started)
+            if (wifi_helper_is_connected())
             {
-                ESP_LOGI(TAG, "WiFi ready, starting MQTT...");
-                mqtt_helper_start();
-                mqtt_started = true;
-            }
+                // Start MQTT
+                if (!mqtt_started)
+                {
+                    ESP_LOGI(TAG, "WiFi ready, starting MQTT...");
+                    mqtt_helper_start();
+                    mqtt_started = true;
+                }
 
-            // ---------------------------------------------------------
-            // B. Read sensor
-            // ---------------------------------------------------------
-            if (sensor_read_values(&current_temp, &current_hum))
-            {
-                // Update display immediately, even without MQTT
-                gui_set_values(current_temp, current_hum);
-                // last_activity_time = esp_timer_get_time(); // Reset timeout on sensor update
-
-                // ---------------------------------------------------------
-                // C. MQTT check & send
-                // ---------------------------------------------------------
-                // Ensure MQTT is connected before publishing
+                // MQWTT connected -> send data if needed
                 if (mqtt_helper_is_connected())
                 {
-                    // Delta Check
                     bool diff_temp = fabs(current_temp - last_sent_temp) >= THRESHOLD_TEMP;
                     bool diff_hum = fabs(current_hum - last_sent_hum) >= THRESHOLD_HUM;
-
-                    // Heartbeat check
                     int64_t now = esp_timer_get_time();
                     bool heartbeat = (now - last_send_time) > SEND_INTERVAL_HEARTBEAT_US;
 
                     if (diff_temp || diff_hum || heartbeat)
                     {
                         gui_set_status("Sending MQTT...");
-                        // last_activity_time = esp_timer_get_time(); // Reset timeout on MQTT send
-
-                        // snprintf with %.1f formats values for MQTT payload
                         mqtt_helper_send_data(current_temp, current_hum);
 
                         last_sent_temp = current_temp;
                         last_sent_hum = current_hum;
                         last_send_time = now;
 
-                        ESP_LOGI(TAG, "Update sent. T:%.1f H:%.1f (Reason: %s)",
-                                 current_temp, current_hum,
-                                 heartbeat ? "Timer" : "Change");
+                        ESP_LOGI(TAG, "Update sent. T:%.1f H:%.1f", current_temp, current_hum);
                     }
                     else
                     {
@@ -173,33 +173,27 @@ void app_main(void)
                 }
                 else
                 {
-                    // Wi-Fi is ready, MQTT still connecting
                     gui_set_status("Connecting MQTT...");
                 }
             }
-            else
+            else // Not connected to WiFi
             {
-                gui_set_status("Sensor Error");
+                bool provisioned = false;
+                // Check if there are WiFi credentials stored
+                esp_err_t err = wifi_prov_mgr_is_provisioned(&provisioned);
+
+                if (err == ESP_OK && !provisioned)
+                {
+                    gui_set_status("Provisioning Mode");
+                }
+                else
+                {
+                    gui_set_status("Waiting for WiFi...");
+                }
             }
         }
-        else
-        {
-            // No Wi-Fi
-            gui_set_status("Waiting for WiFi...");
-            // If Wi-Fi drops, mqtt_started could be reset, but ESP-IDF handles reconnects well
-        }
 
-        // Runtime button check (disabled)
-        // if (gpio_get_level(BUTTON_GPIO) == BUTTON_ACTIVE_LEVEL)
-        // {
-        //     vTaskDelay(pdMS_TO_TICKS(2000));
-        //     if (gpio_get_level(BUTTON_GPIO) == BUTTON_ACTIVE_LEVEL)
-        //     {
-        //         gui_set_status("Resetting...");
-        //         wifi_helper_reset_provisioning();
-        //     }
-        // }
-
+        // Delay before next iteration
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
 }
